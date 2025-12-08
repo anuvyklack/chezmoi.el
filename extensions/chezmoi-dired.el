@@ -33,6 +33,7 @@
 (require 'dired)
 (require 'chezmoi)
 
+;;;###autoload
 (defun chezmoi-dired-add-marked-files ()
   "Add files marked in Dired to source state."
   (interactive)

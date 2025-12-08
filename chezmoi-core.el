@@ -45,6 +45,23 @@
   :type '(string)
   :group 'chezmoi)
 
+(defcustom chezmoi-use-template-source-mode-regex '(".*")
+  "If any match, activates the target file major mode in template files."
+  :group 'chezmoi
+  :type '(repeat string))
+
+(defcustom chezmoi-mode-overwrite-destination nil
+  "Always attach a hook to write to the target file to chezmoi buffers.
+If the target has been changed, it will be overwritten."
+  :group 'chezmoi
+  :type '(boolean))
+
+(defcustom chezmoi-root (file-name-as-directory
+             (substring (shell-command-to-string "chezmoi source-path") 0 -1))
+"The source directory for chezmoi."
+  :group 'chezmoi
+  :type '(string))
+
 (defvar chezmoi-command-error-regex "chezmoi:"
   "Regex for detecting if chezmoi has encountered an error.")
 
@@ -72,6 +89,13 @@
   '(".literal"
     ".tmpl")
   "Source state attribute suffixes.")
+
+(defun chezmoi--mode-from-path ()
+  "Activate `chezmoi-mode' in source files based on their path"
+  (when (string-match chezmoi-root (buffer-file-name))
+    (unless chezmoi-mode (chezmoi-mode))))
+
+(add-hook 'find-file-hook #'chezmoi--mode-from-path)
 
 (provide 'chezmoi-core)
 

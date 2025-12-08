@@ -76,6 +76,24 @@
 	       (cl-mapcar #'expand-file-name)
 	       (member (expand-file-name file))))
 
+(defun chezmoi-source-file-p (file)
+  "Returns non-nil if `FILE' is in the source state."
+  (string-match chezmoi-root file))
+
+(defun chezmoi-encrypted-p (file)
+  "Returns non-nil if `FILE' is encrypted in the source state."
+  (or (string-match "encrypted_" file)
+      (string-match "encrypted_" (or (chezmoi-source-file file) ""))))
+
+(defun chezmoi-template-file-p (file)
+  "Returns non-nil if `FILE' is a chezmoi template file.
+
+Does not check if the file is managed by chezmoi."
+  (string-match ".*\\.tmpl" (if (chezmoi-source-file-p file)
+                                file
+                              (chezmoi-source-file file))))
+
+;;;###autoload
 (defun chezmoi-diff (arg)
   "View output of =chezmoi diff= in a diff-buffer.
 If ARG is non-nil, switch to the diff-buffer."
@@ -83,23 +101,49 @@ If ARG is non-nil, switch to the diff-buffer."
   (let ((b (get-buffer-create "*chezmoi-diff*")))
     (with-current-buffer b
       (erase-buffer)
-      (chezmoi--locally (shell-command (concat chezmoi-command " diff") b)))
+      (chezmoi--locally (shell-command (concat chezmoi-command " diff --use-builtin-diff") b)))
     (unless arg
       (switch-to-buffer b)
       (diff-mode)
       (whitespace-mode 0))
     b))
 
+(defvar chezmoi--merge-procs nil "List of chezmoi merge processes.")
+
+;;;###autoload
+(defun chezmoi-merge (file)
+  "Runs chezmoi merge on `FILE'.
+Requires chezmoi to be configured with an external mergetool (emacs, perhaps?)."
+  (interactive
+   (list (chezmoi--completing-read "Select a dotfile to merge: "
+                   (chezmoi-changed-files)
+                   'project-file)))
+  (when (file-exists-p file)
+    (push (start-process-shell-command "chezmoi" nil (concat "chezmoi merge " file))
+          chezmoi--merge-procs)))
+
+;;;###autoload
+(defun chezmoi-merge-all ()
+  "Call 'chezmoi merge-all'."
+  (interactive)
+  (push (start-process-shell-command "chezmoi" nil "chezmoi merge-all")
+        chezmoi--merge-procs))
+
+(defun chezmoi-merge-quit ()
+  "Help, I ran chezmoi merge without reading the documentation!"
+  (interactive)
+  (dolist (i chezmoi--merge-procs)
+    (kill-process i))
+  (setq chezmoi--merge-procs nil))
+
 (defun chezmoi-changed-files ()
-  "Use chezmoi diff to return the files that have changed."
-  (with-current-buffer (chezmoi-diff t)
-    (goto-char (point-max))
-    (let (files line-beg)
-      (while (setq line-beg (re-search-backward "^\\+\\{3\\} .*" nil t))
-	(let ((file-name (thread-first line-beg
-				       (buffer-substring-no-properties (line-end-position))
-				       (substring 5))))
-	  (push (concat "~" file-name) files)))
+  "Use chezmoi status to return the files that have changed."
+  (let ((files '()))
+    (with-temp-buffer
+
+    (call-process-shell-command "chezmoi status" nil (current-buffer))
+    (while (re-search-backward "^[[:space:]|ADMR][ADMR] \\(.*\\)" nil t)
+              (push (concat "~/" (match-string 1)) files))
       files)))
 
 (defun chezmoi-changed-p (file)
@@ -200,6 +244,7 @@ If ARG is non-nil, switch to the diff-buffer."
 		 chezmoi--dispatch
 		 cl-first)))
 
+;;;###autoload
 (defun chezmoi-write (&optional file arg)
   "Sync FILE.  How it syncs depends if FILE is in source or target.
 If FILE is in source state, run =chezmoi apply= on the target to overwrite it.
@@ -249,6 +294,13 @@ PROMPT, CHOICES, and CATEGORY are passed to `complete-with-action'."
 		       (complete-with-action action choices string predicate)))
 		   nil t))
 
+(defun chezmoi--use-template (file)
+  "If the input `FILE' matches the regex."
+  (let ((ret))
+        (dolist (i chezmoi-use-template-source-mode-regex ret)
+        (setq ret (or ret (string-match i file))))))
+
+;;;###autoload
 (defun chezmoi-find (file)
   "Edit a source FILE managed by chezmoi.
 If the target file has the same state as the source file,add a hook to
@@ -262,15 +314,23 @@ Note: Does not run =chezmoi edit=."
   (let ((source-file (chezmoi-source-file file)))
     (when source-file
       (find-file source-file)
-      (let ((target-file (chezmoi-target-file source-file)))
-	(when-let ((mode (thread-first target-file
-				       file-name-nondirectory
-				       (assoc-default auto-mode-alist 'string-match))))
-	  (funcall mode))
-	(message target-file)
-	(unless chezmoi-mode (chezmoi-mode))
-	source-file))))
+      (let ((target-file (expand-file-name file)))
+	(when-let ((mode (and (chezmoi--use-template target-file)
+                              (assoc-default target-file auto-mode-alist 'string-match))))
+          (funcall
+           (if (and (listp mode) (null (car mode)))
+               (save-window-excursion
+                 (let* ((existed (get-file-buffer target-file))
+                        (_ (find-file target-file))
+                        (m major-mode))
+                   (unless existed (kill-current-buffer))
+                   m))
+	     mode)))
+        (message target-file)
+        (unless chezmoi-mode (chezmoi-mode))
+        source-file))))
 
+;;;###autoload
 (defun chezmoi-sync-files (files &optional arg)
   "Iteratively select file from FILES to sync.
 Interactively select whether to sync the source state or the target state.
@@ -290,25 +350,26 @@ Prefix ARG is passed to `chezmoi-write'."
 		(chezmoi-write file arg))
       (setq files (remove file files)))))
 
+;;;###autoload
 (defun chezmoi-open-other (file)
   "Open buffer's target FILE."
   (interactive (list (buffer-file-name)))
   (if (chezmoi-target-file-p file)
       (chezmoi-find file)
-    (thread-first file
-		  chezmoi-target-file
-		  find-file)))
+    (find-file (chezmoi-target-file file))))
 
 (defun chezmoi-font-lock-keywords ()
   "Keywords for font lock."
   `((,chezmoi-template-regex 0 'chezmoi-template-face prepend)))
 
+;;;###autoload
 (define-minor-mode chezmoi-mode
   "Chezmoi mode for source files."
   :group 'chezmoi
+  (defvar chezmoi-mode-overwrite-destination) ; silence
   (if chezmoi-mode
       (progn
-	(unless (chezmoi-changed-p (buffer-file-name))
+	(when (or chezmoi-mode-overwrite-destination (chezmoi-changed-p (buffer-file-name)))
 	  (add-hook 'after-save-hook #'chezmoi-write 0 t))
 	(add-hook 'after-change-functions #'chezmoi-template--after-change nil 1)
 
