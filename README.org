@@ -19,13 +19,6 @@ Clone this repo or use a package manager.
 (use-package chezmoi)
 #+end_src
 
-Add keybindings to some functions. Or call using ~M-x <cmd>~.
-
-#+begin_src emacs-lisp :noweb yes
-(keymap-global-set "C-c C f" 'chezmoi-find)
-(keymap-global-set "C-c C s" 'chezmoi-write)
-#+end_src
-
 You can manually call ~M-x chezmoi-mode~ in a source file buffer to toggle
 syncronization and template rendering (see [[Templates]]). When using ~chezmoi-find~
 or ~chezmoi-ediff~, ~chezmoi-mode~ will be turned on for you in the source file's
@@ -98,8 +91,8 @@ template variables.
 
 ** Dired
 
-In a Dired buffer, add files to chezmoi by either moving to the file or marking
-some and calling ~chezmoi-dired-add-marked-files~.
+In a Dired buffer, add files to chezmoi by either moving to the file or
+marking some and calling ~chezmoi-dired-add-marked-files~.
 
 ** Magit
 
