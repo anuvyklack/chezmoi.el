@@ -33,14 +33,14 @@
 
 (defun chezmoi-age-get-recipients ()
   "Get age recipients."
-  (let* ((config (chezmoi-get-config))
+  (let* ((config (chezmoi-config))
 	 (recipient (gethash "recipient" (gethash "age" config)))
 	 (recipients (gethash "recipients" (gethash "age" config))))
     (append (if (string-empty-p recipient) nil (list recipient)) recipients)))
 
 (defun chezmoi-age-get-identity ()
   "Get age recipients."
-  (let ((config (chezmoi-get-config)))
+  (let ((config (chezmoi-config)))
     (gethash "identity" (gethash "age" config))))
 
 (provide 'chezmoi-age)

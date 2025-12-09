@@ -25,39 +25,39 @@
 
 
 ;;; Commentary:
-
+;;
 ;; Provides a `cape' backend for `chezmoi'.
-
+;;
 ;;; Code:
 
 (require 'chezmoi)
 (require 'cape)
 
+(defvar chezmoi-template-key-regex "\\."
+  "Regex for splitting keys.")
+
 (defvar chezmoi-cape--properties
-  (list :annotation-function (lambda (_) " Keyword")
-	:company-kind (lambda (_) 'keyword)
-	:exclusive 'no)
+  '( :annotation-function (lambda (_) " Keyword")
+     :company-kind (lambda (_) 'keyword)
+     :exclusive no)
   "Completion extra properties for `chezmoi-cape'.")
 
 (defun chezmoi-cape--next-keys (str)
-  "Return candidates for STR for company completion.
+  "Return candidates for STR for cape completion.
 Candidates are chezmoi data values corresponding to the path at point."
-  (let* ((keys (thread-last chezmoi-template-key-regex
-			    (split-string str)
-			    butlast
-			    (remove "")))
-	 (hashget (lambda (m k) (gethash k m)))
-	 (data (thread-last (chezmoi-get-data)
-			    (cl-reduce hashget keys :initial-value))))
+  (let* ((keys (->> (split-string str chezmoi-template-key-regex)
+		    (butlast)
+		    (delete "")))
+	 (data (-reduce-from (lambda (m k) (gethash k m))
+                             (chezmoi-data)
+                             keys)))
     (if (hash-table-p data)
 	(hash-table-keys data)
       (list data))))
 
 (defun chezmoi-cape--bounds ()
   "TODO."
-  (let* ((bounds (cape--bounds 'word))
-	 (beg (car bounds))
-	 (end (cdr bounds)))
+  (-let (((beg . end) (cape--bounds 'word)))
     (if (string-match "{{" (buffer-substring-no-properties beg end))
 	(let* ((bounds (cape--bounds 'char))
 	       (beg (car bounds))
@@ -68,19 +68,16 @@ Candidates are chezmoi data values corresponding to the path at point."
 (defun chezmoi-capf ()
   "Complete current template."
   (when (thing-at-point-looking-at chezmoi-template-regex)
-    (let* ((candidates (thread-last 1
-				    match-string
-				    chezmoi-cape--next-keys
-				    (apply-partially (lambda (c _) c)))))
-      (let* ((bounds (chezmoi-cape--bounds))
-	     (beg (car bounds))
-	     (end (cdr bounds)))
+    (let* ((candidates (->> (match-string 1)
+			    (chezmoi-cape--next-keys)
+			    (apply-partially (lambda (c _) c)))))
+      (-let (((beg . end) (chezmoi-cape--bounds)))
 	(buffer-substring-no-properties beg end)
-	`(,beg ,end
-	       ,(cape--table-with-properties
-		 (cape--cached-table beg end candidates 'prefix)
-		 :category 'cape-keyword)
-	       ,@chezmoi-cape--properties)))))
+	`( ,beg ,end
+	   ,(cape--table-with-properties
+	     (cape--cached-table beg end candidates 'prefix)
+	     :category 'cape-keyword)
+	   ,@chezmoi-cape--properties)))))
 
 (provide 'chezmoi-cape)
 

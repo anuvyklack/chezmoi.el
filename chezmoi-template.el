@@ -25,7 +25,7 @@
 ;;; Commentary:
 ;;; Code:
 (require 'subr-x)
-(require 'chezmoi-core)
+(require 'chezmoi)
 
 (defcustom chezmoi-template-display-p nil
   "Whether to display templates."
@@ -40,19 +40,14 @@
   "Face for displaying chezmoi templates values."
   :group 'chezmoi)
 
-(defcustom chezmoi-template-regex "{{ *\\(\\.[^[:space:]]* *\\)}}" ; (pcre-to-elisp "\\{\\{ \\.\\S+ \\}\\}")
-  "Regex for detecting chezmoi templates."
-  :type '(choice string regexp)
-  :group 'chezmoi)
-
-(defvar chezmoi-template-key-regex "\\."
-  "Regex for splitting keys.")
-
 (defun chezmoi-template-execute (template)
   "Convert a TEMPLATE string using chezmoi'."
-  (thread-first "%s execute-template %s"
-                (format chezmoi-command (shell-quote-argument template))
-                shell-command-to-string))
+  (with-output-to-string
+    (call-process "chezmoi" nil standard-output nil
+                  "execute-template" template)))
+
+(defvar chezmoi-command-error-regex "chezmoi:"
+  "Regex for detecting if chezmoi has encountered an error.")
 
 (defun chezmoi-template--put-display-value (start end value &optional object)
   "Display the VALUE from START to END in string or buffer OBJECT."
@@ -67,9 +62,8 @@
 VALUE is ignored."
   (when (and start end)
     (let ((value (get-text-property start 'display object)))
-      (remove-text-properties start end `(
-                                          display ,value
-                                          chezmoi t)
+      (remove-text-properties start end `( display ,value
+                                           chezmoi t)
                               object)
       (font-lock-ensure start end)
       (font-lock-flush start end))))
@@ -134,5 +128,4 @@ START is passed to `chezmoi-template--funcall-over-display-properties'."
   (chezmoi-template-buffer-display t))
 
 (provide 'chezmoi-template)
-
 ;;; chezmoi-template.el ends here
